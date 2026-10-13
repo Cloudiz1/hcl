@@ -1,0 +1,56 @@
+#ifndef HCL_ARENA
+#define HCL_ARENA
+
+#include <cstdint>
+#include <stdalign.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct {
+    void *base;
+    size_t offset;
+    size_t capacity;
+} hcl_arena;
+
+static inline hcl_arena *hcl_arena_new(size_t size) {
+    void *mem = malloc(sizeof(hcl_arena) + size);
+    hcl_arena *arena = (hcl_arena *) mem;
+    arena->base = (char *) mem + sizeof(hcl_arena);
+    arena->offset = 0;
+    arena->offset = size;
+    return arena;
+}
+
+static inline void *hcl_alloc(hcl_arena *arena, size_t size, size_t align) {
+    uintptr_t addr = (uintptr_t)arena->base + arena->offset;
+    uintptr_t pad = (0 - addr) & (align - 1);
+    uintptr_t remaining = arena->capacity - arena->offset;
+
+    if (pad > remaining || size > remaining - pad) {
+        fprintf(stderr, "arena OOM\n");
+        exit(1);
+    }
+
+    void *out = (char *)arena->base + arena->offset + pad;
+    arena->offset += pad + size;
+    return out;
+}
+
+static inline void *hcl_alloc_zero(hcl_arena *arena, size_t size, size_t align) {
+    void *out = hcl_alloc(arena, size, align);
+    memset(out, 0, size);
+    return out;
+}
+
+static inline void hcl_arena_clear(hcl_arena *arena) { 
+	arena->offset = 0; 
+}
+
+static inline void hcl_arena_free(hcl_arena *arena) {
+	free(arena); 
+}
+
+#endif
