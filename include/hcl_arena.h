@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -17,13 +18,13 @@ static inline hcl_arena *hcl_arena_new(size_t size) {
     hcl_arena *arena = (hcl_arena *) mem;
     arena->base = (char *) mem + sizeof(hcl_arena);
     arena->offset = 0;
-    arena->offset = size;
+    arena->capacity = size;
     return arena;
 }
 
-static inline void *hcl_alloc(hcl_arena *arena, size_t size, size_t align) {
+static inline void *hcl_alloc_align(hcl_arena *arena, size_t size, size_t align) {
     uintptr_t addr = (uintptr_t)arena->base + arena->offset;
-    uintptr_t pad = (0 - addr) & (align - 1);
+    uintptr_t pad = -addr & (align - 1);
     uintptr_t remaining = arena->capacity - arena->offset;
 
     if (pad > remaining || size > remaining - pad) {
@@ -36,10 +37,8 @@ static inline void *hcl_alloc(hcl_arena *arena, size_t size, size_t align) {
     return out;
 }
 
-static inline void *hcl_alloc_zero(hcl_arena *arena, size_t size, size_t align) {
-    void *out = hcl_alloc(arena, size, align);
-    memset(out, 0, size);
-    return out;
+static inline void *hcl_alloc(hcl_arena *arena, size_t size) {
+	return hcl_alloc_align(arena, size, sizeof(max_align_t));
 }
 
 static inline void hcl_arena_clear(hcl_arena *arena) { 
