@@ -28,7 +28,7 @@ static inline void *hcl_alloc_align(hcl_arena *arena, size_t size, size_t align)
     uintptr_t remaining = arena->capacity - arena->offset;
 
     if (pad > remaining || size > remaining - pad) {
-        fprintf(stderr, "arena OOM\n");
+        fprintf(stderr, "hcl: arena OOM\n");
         exit(1);
     }
 
