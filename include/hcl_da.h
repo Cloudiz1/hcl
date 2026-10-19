@@ -14,14 +14,14 @@
 #define HCL_DA_SCALE_FACTOR 2
 #endif
 
-#define hcl_define_da(type) hcl_define_ptr_da(type, type)
+#define hcl_define_da(type) hcl_define_da_alias(type, type)
 
 // clang-format off
-#define hcl_define_ptr_da(type, alias) \
-    __hcl_define_da(type, alias)       \
-	__hcl_define_da_init(type, alias)  \
-	__hcl_define_da_push(type, alias)  \
-	__hcl_define_da_get(type, alias)   \
+#define hcl_define_da_alias(type, alias) \
+    __hcl_define_da(type, alias)         \
+	__hcl_define_da_init(type, alias)    \
+	__hcl_define_da_push(type, alias)    \
+	__hcl_define_da_get(type, alias)     \
 	__hcl_define_da_clear(alias)
 // clang-format on
 
