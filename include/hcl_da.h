@@ -23,7 +23,7 @@
 	__hcl_define_da_init(type, alias)    \
 	__hcl_define_da_push(type, alias)    \
 	__hcl_define_da_get(type, alias)     \
-	__hcl_define_da_clear(alias)         \
+	__hcl_define_da_clear(alias)
 // clang-format on
 
 #define __hcl_define_da(type, alias) \
@@ -34,7 +34,7 @@
         size_t cap;                  \
     } hcl_da_##alias;
 
-#define __hcl_define_da_init_c(type, alias)                                \
+#define __hcl_define_da_init_c(type, alias)                                   \
     hcl_da_##alias *hcl_da_##alias##_init_c(hcl_arena *arena, size_t count) { \
         void *mem = hcl_alloc_align(                                          \
             arena,                                                            \
