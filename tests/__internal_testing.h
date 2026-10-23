@@ -13,22 +13,22 @@
 #define __hcl_pass() fprintf(stderr, HCL_TESTING_GREEN "passed\n" HCL_TESTING_CLEAR)
 #define __hcl_fail() fprintf(stderr, HCL_TESTING_RED "FAILED\n" HCL_TESTING_CLEAR)
 
-#define hcl_assert(condition)     \
-    do {                          \
+#define hcl_assert(condition)         \
+    do {                              \
         __hcl_print_test(#condition); \
-        if (condition)            \
-            __hcl_pass();         \
-        else                      \
-            __hcl_fail();         \
+        if (condition)                \
+            __hcl_pass();             \
+        else                          \
+            __hcl_fail();             \
     } while (0)
 
-#define hcl_assert_eq(lhs, rhs)         \
-    do {                                \
+#define hcl_assert_eq(lhs, rhs)             \
+    do {                                    \
         __hcl_print_test(#lhs " == " #rhs); \
-        if (lhs == rhs)                 \
-            __hcl_pass();               \
-        else                            \
-            __hcl_fail();               \
+        if (lhs == rhs)                     \
+            __hcl_pass();                   \
+        else                                \
+            __hcl_fail();                   \
     } while (0)
 
 #endif
