@@ -19,10 +19,11 @@
 // clang-format off
 #define hcl_define_da_alias(type, alias) \
     __hcl_define_da(type, alias)         \
+	__hcl_define_da_init_c(type, alias)  \
 	__hcl_define_da_init(type, alias)    \
 	__hcl_define_da_push(type, alias)    \
 	__hcl_define_da_get(type, alias)     \
-	__hcl_define_da_clear(alias)
+	__hcl_define_da_clear(alias)         \
 // clang-format on
 
 #define __hcl_define_da(type, alias) \
@@ -33,19 +34,24 @@
         size_t cap;                  \
     } hcl_da_##alias;
 
-#define __hcl_define_da_init(type, alias)                                \
-    hcl_da_##alias *hcl_da_##alias##_init(hcl_arena *arena) {            \
-        void *mem = hcl_alloc_align(                                     \
-            arena,                                                       \
-            sizeof(hcl_da_##alias) + HCL_DA_DEFAULT_SIZE * sizeof(type), \
-            alignof(hcl_da_##alias));                                    \
-                                                                         \
-        hcl_da_##alias *da = (hcl_da_##alias *)mem;                      \
-        da->data = (type *)((char *)mem + sizeof(hcl_da_##alias));       \
-        da->arena = arena;                                               \
-        da->length = 0;                                                  \
-        da->cap = HCL_DA_DEFAULT_SIZE;                                   \
-        return da;                                                       \
+#define __hcl_define_da_init_c(type, alias)                                \
+    hcl_da_##alias *hcl_da_##alias##_init_c(hcl_arena *arena, size_t count) { \
+        void *mem = hcl_alloc_align(                                          \
+            arena,                                                            \
+            sizeof(hcl_da_##alias) + count * sizeof(type),                    \
+            alignof(hcl_da_##alias));                                         \
+                                                                              \
+        hcl_da_##alias *da = (hcl_da_##alias *)mem;                           \
+        da->data = (type *)((char *)mem + sizeof(hcl_da_##alias));            \
+        da->arena = arena;                                                    \
+        da->length = 0;                                                       \
+        da->cap = HCL_DA_DEFAULT_SIZE;                                        \
+        return da;                                                            \
+    }
+
+#define __hcl_define_da_init(type, alias)                           \
+    hcl_da_##alias *hcl_da_##alias##_init(hcl_arena *arena) {       \
+        return hcl_da_##alias##_init_c(arena, HCL_DA_DEFAULT_SIZE); \
     }
 
 #define __hcl_define_da_push(type, alias)                       \
