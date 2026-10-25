@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/mman.h>
 
 typedef struct {
     void *base;
@@ -14,7 +15,7 @@ typedef struct {
 } hcl_arena;
 
 static inline hcl_arena *hcl_arena_new(size_t size) {
-    void *mem = malloc(sizeof(hcl_arena) + size);
+	void *mem = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     hcl_arena *arena = (hcl_arena *) mem;
     arena->base = (char *) mem + sizeof(hcl_arena);
     arena->offset = 0;
