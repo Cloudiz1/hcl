@@ -3,6 +3,7 @@
 
 #include "hcl_arena.h"
 #include <stdalign.h>
+#include <string.h>
 #include <stddef.h>
 #include <stdio.h>
 
