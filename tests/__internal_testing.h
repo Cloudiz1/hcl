@@ -31,4 +31,13 @@
             __hcl_fail();                   \
     } while (0)
 
+#define hcl_assert_str_eq(lhs, rhs)         \
+    do {                                    \
+        __hcl_print_test(#lhs " == " #rhs); \
+        if (strcmp(lhs, rhs) == 0)          \
+            __hcl_pass();                   \
+        else                                \
+            __hcl_fail();                   \
+    } while (0)
+
 #endif

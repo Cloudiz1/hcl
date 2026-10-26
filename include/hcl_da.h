@@ -3,12 +3,12 @@
 
 #include "hcl_arena.h"
 #include <stdalign.h>
-#include <string.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 #ifndef HCL_DA_DEFAULT_SIZE
-#define HCL_DA_DEFAULT_SIZE 16
+#define HCL_DA_DEFAULT_SIZE 8 
 #endif
 
 #ifndef HCL_DA_SCALE_FACTOR
