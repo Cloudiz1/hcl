@@ -5,7 +5,7 @@
 hcl_define_da(int)
 hcl_define_da_alias(char *, nstr)
 
-#define HCL_DA_TYPES(X) \
+#define HCL_DA_ALIASES(X) \
     X(int)              \
     X(nstr)
 
