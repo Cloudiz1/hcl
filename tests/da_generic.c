@@ -6,7 +6,7 @@ hcl_define_da(int)
 hcl_define_da_alias(char *, nstr)
 
 #define HCL_DA_ALIASES(X) \
-    X(int)              \
+    X(int)                \
     X(nstr)
 
 #include "../include/hcl_da_generic.h"

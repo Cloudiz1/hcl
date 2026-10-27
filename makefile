@@ -19,5 +19,8 @@ run:
 expand:
 	gcc $(dir)/$(f).c -I include/ -E -P -o build/$(f)_expanded.c
 
+expandh:
+	gcc include/$(f).h -E -P -o build/$(f)_expanded.h
+
 clean:
 	rm -r build/*
