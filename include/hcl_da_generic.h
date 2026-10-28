@@ -9,16 +9,16 @@
  * ...
  */
 
-// its important these are the aliases from hcl_da_define(type, alias)
+// its important to note that these are the aliases from hcl_da_define(type, alias)
 #ifdef __HCL_EXAMPLE_BOILTERPLATE
 #include "hcl_da.h"
 
 hcl_define_da(int)
-hcl_define_da_alias(char *, nstr)
+hcl_define_da_alias(char *, str)
 
 #define HCL_DA_ALIASES(X) \
     X(int)                \
-    X(nstr)
+    X(str)
 
 #include "hcl_da_generic.h"
 #endif
