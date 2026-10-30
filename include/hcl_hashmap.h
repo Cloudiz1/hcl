@@ -1,7 +1,11 @@
+#ifndef HCL_HASHMAP
+#define HCL_HASHMAP
+
 #include "hcl_da.h"
 
 #include <cstdint>
 #include <stdint.h>
+#include <string.h>
 
 static const uint64_t PRIME32_1 = 0x9E3779B1U;           // 0b10011110001101110111100110110001
 static const uint64_t PRIME32_2 = 0x85EBCA77U;           // 0b10000101111010111100101001110111
@@ -85,36 +89,109 @@ static inline uint64_t __hcl_hash_4to8(const uint64_t in, size_t len) {
     // omit the modifiedSeed found in the original implementation
     // since it reduces to zero on a default seed
 
-	uint64_t secret = __hcl_rarr64(__hcl_secret + 8) ^ __hcl_rarr64(__hcl_secret + 16);
+    uint64_t secret = __hcl_rarr64(__hcl_secret + 8) ^ __hcl_rarr64(__hcl_secret + 16);
 
-	// lhs - seed is a no op, omit
-	uint64_t val = secret ^ in;
-	val ^= __hcl_rotl(val, 49) ^ __hcl_rotl(val, 24);
-	val *= PRIME_MX2;
-	val ^= (val >> 35) + len;
-	val *= PRIME_MX2;
+    // lhs - seed is a no op, omit
+    uint64_t val = secret ^ in;
+    val ^= __hcl_rotl(val, 49) ^ __hcl_rotl(val, 24);
+    val *= PRIME_MX2;
+    val ^= (val >> 35) + len;
+    val *= PRIME_MX2;
     val ^= val >> 28;
     return val;
 }
 
 static inline uint64_t __hcl_hash_8to16(const uint8_t *in, size_t len) {
-	uint64_t f = __hcl_rarr64(in);
+    uint64_t f = __hcl_rarr64(in);
 
-	// cap the u64 to only bytes we own, if the size is 9, 10-16 is garbage!!
-	uint64_t l = __hcl_rarr64(in + len - 8);
+    // cap the u64 to only bytes we own, if the size is 9, 10-16 is garbage!!
+    uint64_t l = __hcl_rarr64(in + len - 8);
 
-	uint64_t s1 = __hcl_rarr64(__hcl_secret + 24) ^ __hcl_rarr64(__hcl_secret + 32);
-	uint64_t s2 = __hcl_rarr64(__hcl_secret + 40) ^ __hcl_rarr64(__hcl_secret + 48);
+    uint64_t s1 = __hcl_rarr64(__hcl_secret + 24) ^ __hcl_rarr64(__hcl_secret + 32);
+    uint64_t s2 = __hcl_rarr64(__hcl_secret + 40) ^ __hcl_rarr64(__hcl_secret + 48);
 
-	// again, plus seed minus seed is a no op, omit
-	uint64_t low = s1 ^ f;
-	uint64_t high = s2 ^ l;
-	unsigned __int128 mulResult = low * high;
-	uint64_t hr = mulResult >> 64;
-	uint64_t lr = mulResult;
+    // again, plus seed minus seed is a no op, omit
+    uint64_t low = s1 ^ f;
+    uint64_t high = s2 ^ l;
+    unsigned __int128 mulResult = low * high;
+    uint64_t hr = mulResult >> 64;
+    uint64_t lr = mulResult;
 
-	uint64_t val = len + __builtin_bswap64(low) + high + (lr ^ hr);
-	return __hcl_avalanche(val);
+    uint64_t val = len + __builtin_bswap64(low) + high + (lr ^ hr);
+    return __hcl_avalanche(val);
+}
+
+static inline uint64_t __hcl_hash_small(void *data, size_t len) {
+    if (len == 0) {
+        return __hcl_hash_empty();
+    } else if (len < 4) {
+        return __hcl_hash_1to3((uint8_t *)data, len);
+    } else if (len < 8) {
+        return __hcl_hash_4to8((uint64_t)data, len);
+    } else {
+        return __hcl_hash_8to16((uint8_t *)data, len);
+    }
+}
+
+static inline uint64_t __hcl_mix_step(uint8_t *data, size_t secret_offset) {
+    uint64_t data_words[2] = {
+        __hcl_rarr64(data),
+        __hcl_rarr64(data + 8),
+    };
+
+    uint64_t secret_words[2] = {
+        __hcl_rarr64(__hcl_secret + secret_offset),
+        __hcl_rarr64(__hcl_secret + secret_offset + 16),
+    };
+
+    // omit seed. seed of zero is no op
+    unsigned __int128 mul_result = (data_words[0] ^ secret_words[0]) *
+                                   (data_words[1] ^ secret_words[1]);
+
+    uint64_t hr = mul_result >> 64;
+    uint64_t lr = mul_result;
+    return hr ^ lr;
+}
+
+static inline uint64_t __hcl_hash_17to128(void *data, size_t len) {
+    uint64_t acc = len * PRIME64_1;
+    uint64_t nrounds = ((len - 1) >> 5) + 1;
+    for (int i = nrounds - 1; i >= 0; i--) {
+        size_t offset_s = i * 16;
+        size_t offset_e = len - i * 16 - 16;
+
+        unsigned __int128 d1, d2;
+        memcpy(&d1, (char *)data + offset_s, 16);
+        memcpy(&d2, (char *)data + offset_e, 16);
+
+        acc += __hcl_mix_step((uint8_t *)d1, (size_t)i * 32);
+        acc += __hcl_mix_step((uint8_t *)d2, (size_t)i * 32 + 16);
+    }
+
+    return __hcl_avalanche(acc);
+}
+
+static inline uint64_t __hcl_hash_129to240(void *data, size_t len) {
+    uint64_t acc = len * PRIME64_1;
+    uint64_t chunks = len >> 4;
+    for (int i = 0; i < 8; i++) {
+        uint8_t *d;
+        memcpy((char *)data + i * 16, &d, 16);
+        acc += __hcl_mix_step(d, i * 16);
+    }
+
+    acc = __hcl_avalanche(acc);
+
+    for (int i = 0; i < 8; i++) {
+        unsigned __int128 d;
+        memcpy(&d, (char *)data + i * 16, 16);
+        acc += __hcl_mix_step((uint8_t *)d, (i - 8) * 16 + 3);
+    }
+
+	unsigned __int128 d;
+	memcpy(&d, (char *)data - 16, 16);
+	acc += __hcl_mix_step((uint8_t *)d, 119);
+	return __hcl_avalanche(acc);
 }
 
 #define hcl_define_map(kt, vt, eq, hash) hcl_define_map_alias(kt, vt, kt, eq, hash)
@@ -135,3 +212,5 @@ static inline uint64_t __hcl_hash_8to16(const uint8_t *in, size_t len) {
     typedef struct {                                  \
         hcl_da_hcl_group_##alias groups;              \
     } hcl_hashmap_##alias;
+
+#endif
