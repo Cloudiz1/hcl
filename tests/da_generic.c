@@ -38,4 +38,5 @@ void generic_da_test() {
 int main(void) {
 	hcl_test("generic dynamic arrays");
 	generic_da_test();
+	return 0;
 }

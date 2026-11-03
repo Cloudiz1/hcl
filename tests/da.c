@@ -37,4 +37,5 @@ void da_tests() {
 int main(void) {
     hcl_test("dynamic array");
     da_tests();
+	return 0;
 }

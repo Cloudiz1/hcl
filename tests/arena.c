@@ -38,4 +38,5 @@ void arena_tests() {
 int main(void) {
     hcl_test("arena");
     arena_tests();
+	return 0;
 }
