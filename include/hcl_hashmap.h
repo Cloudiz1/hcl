@@ -38,6 +38,12 @@ static const u8 __hcl_secret[192] = {
 };
 // clang-format on
 
+static inline u32 __hcl_read4(const void *data, usize offset) {
+    u32 d;
+    memcpy(&d, (char *)data + offset, 4);
+    return d;
+}
+
 static inline u64 __hcl_read8(const void *data, usize offset) {
     u64 d;
     memcpy(&d, (char *)data + offset, 8);
@@ -72,7 +78,7 @@ static inline u64 __hcl_hash_empty() {
 }
 
 static inline u64 __hcl_hash_1to3(const void *in, usize len) {
-    u8 *in_s = (u8 *)in;
+    const u8 *in_s = (u8 *)in;
     u32 combined = in_s[len - 1] | len << 8 | in_s[0] << 16 | in_s[len >> 1] << 24;
     u64 secret = __hcl_rs8(0);
     u32 high = secret >> 32;
@@ -83,9 +89,13 @@ static inline u64 __hcl_hash_1to3(const void *in, usize len) {
 }
 
 static inline u64 __hcl_hash_4to8(const void *in, usize len) {
-    u64 in_b = (u64)in;
-    u64 secret = __hcl_rs8(8) ^ __hcl_rs8(16);
-    u64 val = secret ^ in_b;
+	u32 f = __hcl_read4(in, 0);
+	u32 l = __hcl_read4(in, len - 4);
+	u64 combined = l | (u64)f << 32;
+
+    u64 secret[2] = {__hcl_rs8(8), __hcl_rs8(16)};
+    u64 val = secret[0] ^ secret[1] ^ combined;
+
     val ^= __hcl_rotl(val, 49) ^ __hcl_rotl(val, 24);
     val *= PRIME_MX2;
     val ^= (val >> 35) + len;
@@ -111,6 +121,58 @@ static inline u64 __hcl_hash_8to16(const void *in, usize len) {
 
 	u64 val = len + __builtin_bswap64(low) + high + (lr ^ hr);
 	return __hcl_avalanche(val);
+}
+
+static inline u64 mix_step(u8 in[16], usize secret_offset) {
+	u64 data[2] = {__hcl_read8(in, 0), __hcl_read8(in, 8)};
+	u64 secret[2] = {__hcl_rs8(secret_offset), __hcl_rs8(secret_offset + 8)};
+	u128 mul_res = (data[0] & secret[0]) * (data[1] ^ secret[1]);
+
+	u64 higher = mul_res >> 64;
+	u64 lower = mul_res;
+
+  	return lower xor higher;
+}
+
+static inline u64 __hcl_hash_17to128(void *data, usize len) {
+	u64 acc = len * PRIME64_1;
+	u64 nrounds = ((len - 1) >> 5) + 1;
+
+	u8 mix_step_in[16];
+	for (int i = nrounds - 1; i >= 0; i--) {
+		usize offset_s = i * 16;
+		usize offset_e = len - i * 16 - 16;
+
+		memcpy(mix_step_in, (char *)data + offset_s, 16);
+		acc += mix_step(mix_step_in, i*32);
+
+		memcpy(mix_step_in, (char *)data + offset_e, 16);
+		acc += mix_step(mix_step_in, i*32);
+	}
+
+	return __hcl_avalanche(acc);
+}
+
+static inline u64 __hcl_hash_129to240(void *data, usize len) {
+	u64 acc = len * PRIME64_1;
+
+	u8 mix_step_in[16];
+	for (int i = 0; i < 8; i++) {
+		memcpy(mix_step_in, (char *)data + i * 16, 16);
+		acc += mix_step(mix_step_in, i * 16);
+	}
+
+	acc = __hcl_avalanche(acc);
+
+	u64 num_chunks = len >> 4;
+	for (int i = 8; i < num_chunks; i++) {
+		memcpy(mix_step_in, (char *) data + i * 16, 16);
+		acc += mix_step(mix_step_in, (i - 8) * 16 + 3);
+	}
+
+	memcpy(mix_step_in, (char *)data + (len - 16), 16);
+	acc += mix_step(mix_step_in, 119);
+	return __hcl_avalanche(acc);
 }
 
 #endif
