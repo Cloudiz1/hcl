@@ -123,15 +123,15 @@ static inline u64 __hcl_hash_8to16(const void *in, usize len) {
 	return __hcl_avalanche(val);
 }
 
-static inline u64 mix_step(u8 in[16], usize secret_offset) {
+static inline u64 __hcl_mix_step(u8 in[16], usize secret_offset) {
 	u64 data[2] = {__hcl_read8(in, 0), __hcl_read8(in, 8)};
 	u64 secret[2] = {__hcl_rs8(secret_offset), __hcl_rs8(secret_offset + 8)};
-	u128 mul_res = (data[0] & secret[0]) * (data[1] ^ secret[1]);
+	u128 mul_res = (data[0] ^ secret[0]) * (data[1] ^ secret[1]);
 
 	u64 higher = mul_res >> 64;
 	u64 lower = mul_res;
 
-  	return lower xor higher;
+  	return lower ^ higher;
 }
 
 static inline u64 __hcl_hash_17to128(void *data, usize len) {
@@ -144,10 +144,10 @@ static inline u64 __hcl_hash_17to128(void *data, usize len) {
 		usize offset_e = len - i * 16 - 16;
 
 		memcpy(mix_step_in, (char *)data + offset_s, 16);
-		acc += mix_step(mix_step_in, i*32);
+		acc += __hcl_mix_step(mix_step_in, i*32);
 
 		memcpy(mix_step_in, (char *)data + offset_e, 16);
-		acc += mix_step(mix_step_in, i*32);
+		acc += __hcl_mix_step(mix_step_in, i*32+16);
 	}
 
 	return __hcl_avalanche(acc);
@@ -156,23 +156,103 @@ static inline u64 __hcl_hash_17to128(void *data, usize len) {
 static inline u64 __hcl_hash_129to240(void *data, usize len) {
 	u64 acc = len * PRIME64_1;
 
-	u8 mix_step_in[16];
 	for (int i = 0; i < 8; i++) {
-		memcpy(mix_step_in, (char *)data + i * 16, 16);
-		acc += mix_step(mix_step_in, i * 16);
+		acc += __hcl_mix_step((u8 *)(char *)data + i * 16, i * 16);
 	}
 
 	acc = __hcl_avalanche(acc);
 
 	u64 num_chunks = len >> 4;
 	for (int i = 8; i < num_chunks; i++) {
-		memcpy(mix_step_in, (char *) data + i * 16, 16);
-		acc += mix_step(mix_step_in, (i - 8) * 16 + 3);
+		acc += __hcl_mix_step((u8 *)(char *)data + i * 16, (i - 8) * 16 + 3);
 	}
 
-	memcpy(mix_step_in, (char *)data + (len - 16), 16);
-	acc += mix_step(mix_step_in, 119);
+	acc += __hcl_mix_step((u8 *)(char *)data + (len - 16), 119);
 	return __hcl_avalanche(acc);
+}
+
+// all of these change with secret, but my secret is constant and default
+#define HCL_SECRET_LEN 192 
+#define HCL_SPB 16 // stripesPerBlock
+#define HCL_BLOCK_SIZE 1024
+
+// TODO: we can vectorize that loop
+static inline void __hcl_accumulate(u64 acc[8], u64 stripe[8], usize secret_offset) {
+	u64 secret_words[8];
+	memcpy(secret_words, (char *)__hcl_secret + secret_offset, 64);
+
+	for (int i = 0; i < 8; i++) {
+		u64 value = stripe[i] ^ secret_words[i];
+		acc[i ^ 1] += stripe[i];
+
+		u32 higher = value >> 32;
+		u32 lower = value;
+
+		acc[i] += lower * higher;
+	}
+}
+
+static inline void __hcl_round_accumulate(u64 acc[8], u8 block[HCL_BLOCK_SIZE]) {
+	for (int n = 0; n < HCL_SPB; n++) {
+		u64 stripe[8];
+		memcpy(stripe, (char *)block + n * 64, 64);
+		__hcl_accumulate(acc, stripe, n * 8);
+	}
+}
+
+// TODO: this can be vectorized too
+static inline void __hcl_round_scramble(u64 acc[8]) {
+	for (int i = 0; i < 8; i++) {
+		acc[i] ^= acc[i] >> 47;
+		acc[i] ^= __hcl_rs8(HCL_SECRET_LEN - 64 + i * 8);
+		acc[i] *= PRIME32_1;
+	}
+}
+
+static inline void __hcl_round(u64 acc[8], u8 block[HCL_BLOCK_SIZE]) {
+	__hcl_round_accumulate(acc, block);
+	__hcl_round_scramble(acc);
+}
+
+static inline u64 __hcl_hash_large(void *data, usize len) {
+	usize secret_offset = 11;
+
+	u64 acc[8] = {
+		PRIME32_3, PRIME64_1, PRIME64_2, PRIME64_3,
+		PRIME64_4, PRIME32_2, PRIME64_5, PRIME32_1
+	};
+
+	int i = 0;
+	while (len > HCL_BLOCK_SIZE) {
+		__hcl_round(acc, (u8 *)(char *)data + i * HCL_BLOCK_SIZE);
+		len -= HCL_BLOCK_SIZE;
+		i++;
+	}
+
+	usize n_full_stripes = (len - 1)/64;
+	for (int n = 0; n < n_full_stripes; n++) {
+		u64 *stripe = (u64 *)(char *)data + i * HCL_BLOCK_SIZE + n * 8;
+		__hcl_accumulate(acc, stripe, n * 8);
+	}
+
+	u64 *last_stripe = (u64 *)(char *)data + i * HCL_BLOCK_SIZE + (n_full_stripes - 1) * 8;
+	__hcl_accumulate(acc, last_stripe, HCL_SECRET_LEN - 71);
+
+	u64 secret_words[8];
+	memcpy(secret_words, (char *)__hcl_secret + secret_offset, 64);
+	u64 result = len * PRIME64_1;
+
+	for (i = 0; i < 4; i++) {
+		u128 mul_result = (acc[i*2] ^ secret_words[i*2]) *
+			(acc[i*2+1] ^ secret_words[i*2+1]);
+
+		u64 higher = mul_result >> 64;
+		u64 lower = mul_result;
+
+		result += lower ^ higher;
+	}
+
+	return __hcl_avalanche(result);
 }
 
 #endif
