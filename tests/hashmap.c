@@ -2,6 +2,7 @@
 #include "__internal_testing.h"
 #include "__hashmap_cases.h"
 
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -10,7 +11,7 @@
 
 void xxhash3() {
 	__hcl_print_test("xxhash3");
-	size_t const buffer_size = 2048;
+	size_t const buffer_size = 4160;
 
 	u8* const buffer = malloc(buffer_size);
 	if (buffer == NULL) {
@@ -29,7 +30,7 @@ void xxhash3() {
 		u64 expected = hash_cases[i];
 		u64 hash = hcl_hash(buffer, i);
 		if (hash != expected) {
-		__hcl_fail();
+			__hcl_fail();
 			fprintf(stderr, "    xxhash3 failed on case: %d.\n"
 		   									"    expected: %lX\n"
 		   									"    found:    %lX\n", i, expected, hash);

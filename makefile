@@ -1,5 +1,15 @@
 .PHONY: run clean
-all: full 
+all: simd
+
+simd:
+	clear
+	@mkdir -p build
+	@for f in $$(find $(dir) -name "*.c"); do \
+		out=build/$$(basename $$f .c); \
+		gcc $$f -g -march=native -I include/ -Wall -Werror -o $$out || exit 1; \
+		./$$out || exit 1; \
+		echo; \
+	done
 
 full:
 	clear

@@ -1,18 +1,23 @@
 #ifndef HCL_HASHMAP
 #define HCL_HASHMAP
 
+#include <emmintrin.h>
 #define u8 uint8_t
 #define u32 uint32_t
 #define u64 uint64_t
 #define u128 unsigned __int128
 #define usize size_t
 
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <immintrin.h>
 
-static const u64 PRIME32_1 = 0x9E3779B1U;           // 0b10011110001101110111100110110001
-static const u64 PRIME32_2 = 0x85EBCA77U;           // 0b10000101111010111100101001110111
-static const u64 PRIME32_3 = 0xC2B2AE3DU;           // 0b11000010101100101010111000111101
+#include "hcl_misc.h"
+
+static const u32 PRIME32_1 = 0x9E3779B1U;           // 0b10011110001101110111100110110001
+static const u32 PRIME32_2 = 0x85EBCA77U;           // 0b10000101111010111100101001110111
+static const u32 PRIME32_3 = 0xC2B2AE3DU;           // 0b11000010101100101010111000111101
 static const u64 PRIME64_1 = 0x9E3779B185EBCA87ULL; // 0b1001111000110111011110011011000110000101111010111100101010000111
 static const u64 PRIME64_2 = 0xC2B2AE3D27D4EB4FULL; // 0b1100001010110010101011100011110100100111110101001110101101001111
 static const u64 PRIME64_3 = 0x165667B19E3779F9ULL; // 0b0001011001010110011001111011000110011110001101110111100111111001
@@ -201,13 +206,43 @@ static inline void __hcl_round_accumulate(u64 acc[8], u8 block[HCL_BLOCK_SIZE]) 
 	}
 }
 
-// TODO: this can be vectorized too
 static inline void __hcl_round_scramble(u64 acc[8]) {
+#ifdef __AVX2__
+	_Alignas(32) u64 secret[8];
+	memcpy(secret, (char *)__hcl_secret + HCL_SECRET_LEN - 64, 64);
+
+	HCL_ASSUME_ALIGNED(acc, 32);
+	__m256i v1 = _mm256_load_si256((__m256i *)acc);
+	__m256i v2 = _mm256_load_si256((__m256i *)(acc + 4));
+
+	__m128i shift_vector = _mm_cvtsi64_si128(47);
+	
+	// acc[i] ^= acc[i] >> 47
+	v1 = _mm256_xor_si256(v1, _mm256_srl_epi64(v1, shift_vector));
+	v2 = _mm256_xor_si256(v2, _mm256_srl_epi64(v2, shift_vector));
+
+	// acc[i] ^= secret[HCL_SECRET_LEN:HCL_SECRET_LEN - 64 + i * 8]
+	__m256i s1 = _mm256_load_si256((__m256i *)secret);
+	__m256i s2 = _mm256_load_si256((__m256i *)(secret + 4));
+
+	v1 = _mm256_xor_si256(v1, s1); 
+	v2 = _mm256_xor_si256(v2, s2); 
+
+	// acc[i] *= PRIME32_1
+	__m256i prime_vector = _mm256_set1_epi64x(PRIME32_1);
+
+	hcl_mm256_mul_epu64(v1, prime_vector);
+	hcl_mm256_mul_epu64(v2, prime_vector);
+
+	_mm256_store_si256((__m256i *)acc, v1);
+	_mm256_store_si256((__m256i *)(acc + 4), v2);
+#else
 	for (int i = 0; i < 8; i++) {
 		acc[i] ^= acc[i] >> 47;
 		acc[i] ^= __hcl_rs8(HCL_SECRET_LEN - 64 + i * 8);
 		acc[i] *= PRIME32_1;
 	}
+#endif
 }
 
 static inline void __hcl_round(u64 acc[8], u8 block[HCL_BLOCK_SIZE]) {
@@ -221,7 +256,7 @@ static inline u64 __hcl_hash_large(void *data, usize len) {
 	u64 result = len * PRIME64_1;
 	const u64 *last_stripe = (u64 *)((char *)data + len - 64);
 
-	u64 acc[8] = {
+	_Alignas(32) u64 acc[8] = {
 		PRIME32_3, PRIME64_1, PRIME64_2, PRIME64_3,
 		PRIME64_4, PRIME32_2, PRIME64_5, PRIME32_1
 	};
