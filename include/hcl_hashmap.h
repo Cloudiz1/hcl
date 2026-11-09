@@ -1,7 +1,6 @@
 #ifndef HCL_HASHMAP
 #define HCL_HASHMAP
 
-#include <emmintrin.h>
 #define u8 uint8_t
 #define u32 uint32_t
 #define u64 uint64_t
@@ -181,36 +180,62 @@ static inline u64 __hcl_hash_129to240(void *data, usize len) {
 #define HCL_SPB 16 // stripesPerBlock
 #define HCL_BLOCK_SIZE 1024
 
-// TODO: we can vectorize that loop
+#define HCL_ADJACENT_SWAP _MM_SHUFFLE(1, 0, 3, 2)
+
 static inline void __hcl_accumulate(u64 acc[8], const u64 stripe[8], usize secret_offset) {
-	// TODO: this is constant, we should make that more clear
+#ifdef __AVX2__
+	__m256i a1 = _mm256_loadu_si256((__m256i *)acc);
+	__m256i a2 = _mm256_loadu_si256((__m256i *)(acc + 4));
+
+	__m256i st1 = _mm256_loadu_si256((__m256i *)stripe);
+	__m256i st2 = _mm256_loadu_si256((__m256i *)(stripe + 4));
+
+	__m256i sw1 = _mm256_loadu_si256((const __m256i *)(__hcl_secret + secret_offset));
+	__m256i sw2 = _mm256_loadu_si256((const __m256i *)(__hcl_secret + secret_offset + 32));
+
+	// acc[i ^ 1] += stripe[i]
+	a1 = _mm256_add_epi64(a1, _mm256_shuffle_epi32(st1, HCL_ADJACENT_SWAP));
+	a2 = _mm256_add_epi64(a2, _mm256_shuffle_epi32(st2, HCL_ADJACENT_SWAP));
+
+	// val = stripe[i] ^ secret_words[i]
+	__m256i val_v1 = _mm256_xor_si256(st1, sw1);
+	__m256i val_v2 = _mm256_xor_si256(st2, sw2);
+
+	// equivalent to the higher = val >> 32; lower = val; trick
+	__m256i val_v1_hi = _mm256_srli_epi64(val_v1, 32);
+	__m256i val_v2_hi = _mm256_srli_epi64(val_v2, 32);
+
+	// acc[i] += (u64) lower * higher
+	// we can do this mul because epu32 takes 32 bits from each u64 and casts
+	// into a u64
+	a1 = _mm256_add_epi64(a1, _mm256_mul_epu32(val_v1, val_v1_hi));
+	a2 = _mm256_add_epi64(a2, _mm256_mul_epu32(val_v2, val_v2_hi));
+
+	_mm256_store_si256((__m256i *)acc, a1);
+	_mm256_store_si256((__m256i *)(acc + 4), a2);
+#else
 	u64 secret_words[8];
 	memcpy(secret_words, (char *)__hcl_secret + secret_offset, 64);
 
 	for (int i = 0; i < 8; i++) {
-		u64 value = stripe[i] ^ secret_words[i];
 		acc[i ^ 1] += stripe[i];
 
+		u64 value = stripe[i] ^ secret_words[i];
 		u32 higher = value >> 32;
 		u32 lower = value;
-
 		acc[i] += (u64)lower * higher;
 	}
+#endif
 }
 
 static inline void __hcl_round_accumulate(u64 acc[8], u8 block[HCL_BLOCK_SIZE]) {
 	for (int n = 0; n < HCL_SPB; n++) {
-		u64 stripe[8];
-		memcpy(stripe, (char *)block + n * 64, 64);
-		__hcl_accumulate(acc, stripe, n * 8);
+		__hcl_accumulate(acc, (const u64 *)((const char *)block + n * 64), n * 8);
 	}
 }
 
 static inline void __hcl_round_scramble(u64 acc[8]) {
 #ifdef __AVX2__
-	_Alignas(32) u64 secret[8];
-	memcpy(secret, (char *)__hcl_secret + HCL_SECRET_LEN - 64, 64);
-
 	HCL_ASSUME_ALIGNED(acc, 32);
 	__m256i v1 = _mm256_load_si256((__m256i *)acc);
 	__m256i v2 = _mm256_load_si256((__m256i *)(acc + 4));
@@ -222,8 +247,8 @@ static inline void __hcl_round_scramble(u64 acc[8]) {
 	v2 = _mm256_xor_si256(v2, _mm256_srl_epi64(v2, shift_vector));
 
 	// acc[i] ^= secret[HCL_SECRET_LEN:HCL_SECRET_LEN - 64 + i * 8]
-	__m256i s1 = _mm256_load_si256((__m256i *)secret);
-	__m256i s2 = _mm256_load_si256((__m256i *)(secret + 4));
+	__m256i s1 = _mm256_loadu_si256((const __m256i *)(__hcl_secret + HCL_SECRET_LEN - 64));
+	__m256i s2 = _mm256_loadu_si256((const __m256i *)(__hcl_secret + HCL_SECRET_LEN - 32));
 
 	v1 = _mm256_xor_si256(v1, s1); 
 	v2 = _mm256_xor_si256(v2, s2); 
