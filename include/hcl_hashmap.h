@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "hcl_da.h"
 #include "hcl_misc.h"
 
 static const u32 PRIME32_1 = 0x9E3779B1U;           // 0b10011110001101110111100110110001
@@ -333,26 +334,56 @@ static inline u64 hcl_hash(void *in, size_t len) {
         return __hcl_hash_large(in, len);
 }
 
-#define hcl_define_hashmap_alias(K, V, name)                                         \
-    typedef struct {                                                                 \
-        K key;                                                                       \
-        V value;                                                                     \
-    } hcl_hmpair_##name;                                                             \
-                                                                                     \
-    typedef struct {                                                                 \
-        hcl_da_hash_##name *backing;                                                 \
-    } hcl__##name;                                                                   \
-                                                                                     \
-    hcl_hashmap_##name *hcl_hashmap_##name##_initc(hcl_arena *arena, size_t count) { \
-        hcl_hashmap_##name *hashmap = (hcl_hashmap_##name *)hcl_alloc_align(         \
-            arena,                                                                   \
-            sizeof(hcl_hashmap_##name),                                              \
-            alignof(hcl_hashmap_##name));                                            \
-                                                                                     \
-        da->backing = hcl_da_hash_##name_initc(arena, count * 8);                    \
-        da->len = 0;                                                                 \
-        da->cap = count;                                                             \
-        return hashmap;                                                              \
+#define hcl_empty 0b10000000
+#define hcl_deleted 0b11111110
+
+#define hcl_define_hashmap_alias(K, V, name)                                          \
+    typedef struct {                                                                  \
+        K key;                                                                        \
+        V value;                                                                      \
+    } hcl_hm_pair_##name;                                                             \
+                                                                                      \
+    typedef struct {                                                                  \
+        hcl_hm_pair_##name slots[8];                                                  \
+        uint64_t control                                                              \
+    } hcl_hm_group_##name;                                                            \
+                                                                                      \
+    hcl_define_da_alias(hcl_hm_group_##name, hm_group_##name)                         \
+                                                                                      \
+        typedef struct {                                                              \
+        size_t len;                                                                   \
+        size_t cap;                                                                   \
+        uint64_t (*hash)(K);                                                          \
+        hcl_da_hm_group_##name groups;                                                \
+    } hcl_hashmap_##name                                                              \
+                                                                                      \
+    hcl_hashmap_##name##_initc(hcl_arena *arena, uint64_t (*hash)(K), size_t count) { \
+        hcl_hashmap_##name *hashmap = (hcl_hashmap_##name *)hcl_alloc_align(          \
+            arena,                                                                    \
+            sizeof(hcl_hashmap_##name),                                               \
+            alignof(hcl_hashmap_##name));                                             \
+                                                                                      \
+        hashmap->groups = hcl_da_hm_group_##name##_initc(arena, count);               \
+        hashmap->len = 0;                                                             \
+        hashmap->cap = count;                                                         \
+        hashmap->hash = hash;                                                         \
+        return hashmap;                                                               \
+    }                                                                                 \
+                                                                                      \
+    hcl_hashmap_insert_##name(hcl_hashmap_##name map, K key, V value) {               \
+        uint64_t h = map->hash(K);                                                    \
+        uint64_t upper = h >> 7;                                                      \
+        char lower = h & 0b1111111;                                                   \
+        size_t index = upper % hash->cap;                                             \
     }
 
 #endif
+
+// NOTE TO SELF
+// the deleted value in control is to signal whether or not the value inserted has overflowed
+// 		as a hash stops when it finds an empty value
+// HOWEVER, if there is already one empty element in the group, we can actually just immediately mark it as empty, as it would stop regardless!
+//
+// there is also a cool technique you can do called extendible hashing, which means we compose our swiss table out of one or more swiss tables
+// some number of upper bits would be used to index into the array of tables, and then if one of the subtables grow too large, resizing that would be far less computationally expensive
+// however, this may be overkill for HCL's needs
