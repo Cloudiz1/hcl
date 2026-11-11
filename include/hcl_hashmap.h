@@ -7,10 +7,10 @@
 #define u128 unsigned __int128
 #define usize size_t
 
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
 #include <immintrin.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "hcl_misc.h"
 
@@ -93,9 +93,9 @@ static inline u64 __hcl_hash_1to3(const void *in, usize len) {
 }
 
 static inline u64 __hcl_hash_4to8(const void *in, usize len) {
-	u32 f = __hcl_read4(in, 0);
-	u32 l = __hcl_read4(in, len - 4);
-	u64 combined = l | (u64)f << 32;
+    u32 f = __hcl_read4(in, 0);
+    u32 l = __hcl_read4(in, len - 4);
+    u64 combined = l | (u64)f << 32;
 
     u64 secret[2] = {__hcl_rs8(8), __hcl_rs8(16)};
     u64 val = secret[0] ^ secret[1] ^ combined;
@@ -110,73 +110,73 @@ static inline u64 __hcl_hash_4to8(const void *in, usize len) {
 
 static inline u64 __hcl_hash_9to16(const void *in, usize len) {
     u64 f = __hcl_read8(in, 0);
-	u64 l = __hcl_read8(in, len - 8);
+    u64 l = __hcl_read8(in, len - 8);
 
-	u64 s[2] = {
-		__hcl_rs8(24) ^ __hcl_rs8(32),
-		__hcl_rs8(40) ^ __hcl_rs8(48)
-	};
+    u64 s[2] = {
+        __hcl_rs8(24) ^ __hcl_rs8(32),
+        __hcl_rs8(40) ^ __hcl_rs8(48)};
 
-	u64 low = s[0] ^ f;
-	u64 high = s[1] ^ l;
-	u128 mul_result = (u128)low * high;
-	u64 hr = mul_result >> 64;
-	u64 lr = mul_result;
+    u64 low = s[0] ^ f;
+    u64 high = s[1] ^ l;
+    u128 mul_result = (u128)low * high;
+    u64 hr = mul_result >> 64;
+    u64 lr = mul_result;
 
-	u64 val = len + __builtin_bswap64(low) + high + (lr ^ hr);
-	return __hcl_avalanche(val);
+    // TODO: __builtin_bswap64 is a gcc and clang instrinsic
+    u64 val = len + __builtin_bswap64(low) + high + (lr ^ hr);
+    return __hcl_avalanche(val);
 }
 
 static inline u64 __hcl_mix_step(u8 in[16], usize secret_offset) {
-	u64 data[2] = {__hcl_read8(in, 0), __hcl_read8(in, 8)};
-	u64 secret[2] = {__hcl_rs8(secret_offset), __hcl_rs8(secret_offset + 8)};
-	u128 mul_res = (u128)(data[0] ^ secret[0]) * (data[1] ^ secret[1]);
+    u64 data[2] = {__hcl_read8(in, 0), __hcl_read8(in, 8)};
+    u64 secret[2] = {__hcl_rs8(secret_offset), __hcl_rs8(secret_offset + 8)};
+    u128 mul_res = (u128)(data[0] ^ secret[0]) * (data[1] ^ secret[1]);
 
-	u64 higher = mul_res >> 64;
-	u64 lower = mul_res;
+    u64 higher = mul_res >> 64;
+    u64 lower = mul_res;
 
-  	return lower ^ higher;
+    return lower ^ higher;
 }
 
 static inline u64 __hcl_hash_17to128(void *data, usize len) {
-	u64 acc = len * PRIME64_1;
-	u64 nrounds = ((len - 1) >> 5) + 1;
+    u64 acc = len * PRIME64_1;
+    u64 nrounds = ((len - 1) >> 5) + 1;
 
-	u8 mix_step_in[16];
-	for (int i = nrounds - 1; i >= 0; i--) {
-		usize offset_s = i * 16;
-		usize offset_e = len - i * 16 - 16;
+    u8 mix_step_in[16];
+    for (int i = nrounds - 1; i >= 0; i--) {
+        usize offset_s = i * 16;
+        usize offset_e = len - i * 16 - 16;
 
-		memcpy(mix_step_in, (char *)data + offset_s, 16);
-		acc += __hcl_mix_step(mix_step_in, i*32);
+        memcpy(mix_step_in, (char *)data + offset_s, 16);
+        acc += __hcl_mix_step(mix_step_in, i * 32);
 
-		memcpy(mix_step_in, (char *)data + offset_e, 16);
-		acc += __hcl_mix_step(mix_step_in, i*32+16);
-	}
+        memcpy(mix_step_in, (char *)data + offset_e, 16);
+        acc += __hcl_mix_step(mix_step_in, i * 32 + 16);
+    }
 
-	return __hcl_avalanche(acc);
+    return __hcl_avalanche(acc);
 }
 
 static inline u64 __hcl_hash_129to240(void *data, usize len) {
-	u64 acc = len * PRIME64_1;
+    u64 acc = len * PRIME64_1;
 
-	for (int i = 0; i < 8; i++) {
-		acc += __hcl_mix_step((u8 *)(char *)data + i * 16, i * 16);
-	}
+    for (int i = 0; i < 8; i++) {
+        acc += __hcl_mix_step((u8 *)(char *)data + i * 16, i * 16);
+    }
 
-	acc = __hcl_avalanche(acc);
+    acc = __hcl_avalanche(acc);
 
-	u64 num_chunks = len >> 4;
-	for (int i = 8; i < num_chunks; i++) {
-		acc += __hcl_mix_step((u8 *)(char *)data + i * 16, (i - 8) * 16 + 3);
-	}
+    u64 num_chunks = len >> 4;
+    for (int i = 8; i < num_chunks; i++) {
+        acc += __hcl_mix_step((u8 *)(char *)data + i * 16, (i - 8) * 16 + 3);
+    }
 
-	acc += __hcl_mix_step((u8 *)(char *)data + (len - 16), 119);
-	return __hcl_avalanche(acc);
+    acc += __hcl_mix_step((u8 *)(char *)data + (len - 16), 119);
+    return __hcl_avalanche(acc);
 }
 
 // all of these change with secret, but my secret is constant and default
-#define HCL_SECRET_LEN 192 
+#define HCL_SECRET_LEN 192
 #define HCL_SPB 16 // stripesPerBlock
 #define HCL_BLOCK_SIZE 1024
 
@@ -184,147 +184,175 @@ static inline u64 __hcl_hash_129to240(void *data, usize len) {
 
 static inline void __hcl_accumulate(u64 acc[8], const u64 stripe[8], usize secret_offset) {
 #ifdef __AVX2__
-	__m256i a1 = _mm256_loadu_si256((__m256i *)acc);
-	__m256i a2 = _mm256_loadu_si256((__m256i *)(acc + 4));
+    __m256i a1 = _mm256_loadu_si256((__m256i *)acc);
+    __m256i a2 = _mm256_loadu_si256((__m256i *)(acc + 4));
 
-	__m256i st1 = _mm256_loadu_si256((__m256i *)stripe);
-	__m256i st2 = _mm256_loadu_si256((__m256i *)(stripe + 4));
+    __m256i st1 = _mm256_loadu_si256((__m256i *)stripe);
+    __m256i st2 = _mm256_loadu_si256((__m256i *)(stripe + 4));
 
-	__m256i sw1 = _mm256_loadu_si256((const __m256i *)(__hcl_secret + secret_offset));
-	__m256i sw2 = _mm256_loadu_si256((const __m256i *)(__hcl_secret + secret_offset + 32));
+    __m256i sw1 = _mm256_loadu_si256((const __m256i *)(__hcl_secret + secret_offset));
+    __m256i sw2 = _mm256_loadu_si256((const __m256i *)(__hcl_secret + secret_offset + 32));
 
-	// acc[i ^ 1] += stripe[i]
-	a1 = _mm256_add_epi64(a1, _mm256_shuffle_epi32(st1, HCL_ADJACENT_SWAP));
-	a2 = _mm256_add_epi64(a2, _mm256_shuffle_epi32(st2, HCL_ADJACENT_SWAP));
+    // acc[i ^ 1] += stripe[i]
+    a1 = _mm256_add_epi64(a1, _mm256_shuffle_epi32(st1, HCL_ADJACENT_SWAP));
+    a2 = _mm256_add_epi64(a2, _mm256_shuffle_epi32(st2, HCL_ADJACENT_SWAP));
 
-	// val = stripe[i] ^ secret_words[i]
-	__m256i val_v1 = _mm256_xor_si256(st1, sw1);
-	__m256i val_v2 = _mm256_xor_si256(st2, sw2);
+    // val = stripe[i] ^ secret_words[i]
+    __m256i val_v1 = _mm256_xor_si256(st1, sw1);
+    __m256i val_v2 = _mm256_xor_si256(st2, sw2);
 
-	// equivalent to the higher = val >> 32; lower = val; trick
-	__m256i val_v1_hi = _mm256_srli_epi64(val_v1, 32);
-	__m256i val_v2_hi = _mm256_srli_epi64(val_v2, 32);
+    // equivalent to the higher = val >> 32; lower = val; trick
+    __m256i val_v1_hi = _mm256_srli_epi64(val_v1, 32);
+    __m256i val_v2_hi = _mm256_srli_epi64(val_v2, 32);
 
-	// acc[i] += (u64) lower * higher
-	// we can do this mul because epu32 takes 32 bits from each u64 and casts
-	// into a u64
-	a1 = _mm256_add_epi64(a1, _mm256_mul_epu32(val_v1, val_v1_hi));
-	a2 = _mm256_add_epi64(a2, _mm256_mul_epu32(val_v2, val_v2_hi));
+    // acc[i] += (u64) lower * higher
+    // we can do this mul because epu32 takes 32 bits from each u64 and casts
+    // into a u64
+    a1 = _mm256_add_epi64(a1, _mm256_mul_epu32(val_v1, val_v1_hi));
+    a2 = _mm256_add_epi64(a2, _mm256_mul_epu32(val_v2, val_v2_hi));
 
-	_mm256_store_si256((__m256i *)acc, a1);
-	_mm256_store_si256((__m256i *)(acc + 4), a2);
+    _mm256_store_si256((__m256i *)acc, a1);
+    _mm256_store_si256((__m256i *)(acc + 4), a2);
 #else
-	u64 secret_words[8];
-	memcpy(secret_words, (char *)__hcl_secret + secret_offset, 64);
+    u64 secret_words[8];
+    memcpy(secret_words, (char *)__hcl_secret + secret_offset, 64);
 
-	for (int i = 0; i < 8; i++) {
-		acc[i ^ 1] += stripe[i];
+    for (int i = 0; i < 8; i++) {
+        acc[i ^ 1] += stripe[i];
 
-		u64 value = stripe[i] ^ secret_words[i];
-		u32 higher = value >> 32;
-		u32 lower = value;
-		acc[i] += (u64)lower * higher;
-	}
+        u64 value = stripe[i] ^ secret_words[i];
+        u32 higher = value >> 32;
+        u32 lower = value;
+        acc[i] += (u64)lower * higher;
+    }
 #endif
 }
 
 static inline void __hcl_round_accumulate(u64 acc[8], u8 block[HCL_BLOCK_SIZE]) {
-	for (int n = 0; n < HCL_SPB; n++) {
-		__hcl_accumulate(acc, (const u64 *)((const char *)block + n * 64), n * 8);
-	}
+    for (int n = 0; n < HCL_SPB; n++) {
+        __hcl_accumulate(acc, (const u64 *)((const char *)block + n * 64), n * 8);
+    }
 }
 
 static inline void __hcl_round_scramble(u64 acc[8]) {
 #ifdef __AVX2__
-	HCL_ASSUME_ALIGNED(acc, 32);
-	__m256i v1 = _mm256_load_si256((__m256i *)acc);
-	__m256i v2 = _mm256_load_si256((__m256i *)(acc + 4));
+    HCL_ASSUME_ALIGNED(acc, 32);
+    __m256i v1 = _mm256_load_si256((__m256i *)acc);
+    __m256i v2 = _mm256_load_si256((__m256i *)(acc + 4));
 
-	__m128i shift_vector = _mm_cvtsi64_si128(47);
-	
-	// acc[i] ^= acc[i] >> 47
-	v1 = _mm256_xor_si256(v1, _mm256_srl_epi64(v1, shift_vector));
-	v2 = _mm256_xor_si256(v2, _mm256_srl_epi64(v2, shift_vector));
+    __m128i shift_vector = _mm_cvtsi64_si128(47);
 
-	// acc[i] ^= secret[HCL_SECRET_LEN:HCL_SECRET_LEN - 64 + i * 8]
-	__m256i s1 = _mm256_loadu_si256((const __m256i *)(__hcl_secret + HCL_SECRET_LEN - 64));
-	__m256i s2 = _mm256_loadu_si256((const __m256i *)(__hcl_secret + HCL_SECRET_LEN - 32));
+    // acc[i] ^= acc[i] >> 47
+    v1 = _mm256_xor_si256(v1, _mm256_srl_epi64(v1, shift_vector));
+    v2 = _mm256_xor_si256(v2, _mm256_srl_epi64(v2, shift_vector));
 
-	v1 = _mm256_xor_si256(v1, s1); 
-	v2 = _mm256_xor_si256(v2, s2); 
+    // acc[i] ^= secret[HCL_SECRET_LEN:HCL_SECRET_LEN - 64 + i * 8]
+    __m256i s1 = _mm256_loadu_si256((const __m256i *)(__hcl_secret + HCL_SECRET_LEN - 64));
+    __m256i s2 = _mm256_loadu_si256((const __m256i *)(__hcl_secret + HCL_SECRET_LEN - 32));
 
-	// acc[i] *= PRIME32_1
-	__m256i prime_vector = _mm256_set1_epi64x(PRIME32_1);
+    v1 = _mm256_xor_si256(v1, s1);
+    v2 = _mm256_xor_si256(v2, s2);
 
-	hcl_mm256_mul_epu64(v1, prime_vector);
-	hcl_mm256_mul_epu64(v2, prime_vector);
+    // acc[i] *= PRIME32_1
+    __m256i prime_vector = _mm256_set1_epi64x(PRIME32_1);
 
-	_mm256_store_si256((__m256i *)acc, v1);
-	_mm256_store_si256((__m256i *)(acc + 4), v2);
+    hcl_mm256_mul_epu64(v1, prime_vector);
+    hcl_mm256_mul_epu64(v2, prime_vector);
+
+    _mm256_store_si256((__m256i *)acc, v1);
+    _mm256_store_si256((__m256i *)(acc + 4), v2);
 #else
-	for (int i = 0; i < 8; i++) {
-		acc[i] ^= acc[i] >> 47;
-		acc[i] ^= __hcl_rs8(HCL_SECRET_LEN - 64 + i * 8);
-		acc[i] *= PRIME32_1;
-	}
+    for (int i = 0; i < 8; i++) {
+        acc[i] ^= acc[i] >> 47;
+        acc[i] ^= __hcl_rs8(HCL_SECRET_LEN - 64 + i * 8);
+        acc[i] *= PRIME32_1;
+    }
 #endif
 }
 
 static inline void __hcl_round(u64 acc[8], u8 block[HCL_BLOCK_SIZE]) {
-	__hcl_round_accumulate(acc, block);
-	__hcl_round_scramble(acc);
+    __hcl_round_accumulate(acc, block);
+    __hcl_round_scramble(acc);
 }
 
 static inline u64 __hcl_hash_large(void *data, usize len) {
-	usize secret_offset = 11;
+    usize secret_offset = 11;
 
-	u64 result = len * PRIME64_1;
-	const u64 *last_stripe = (u64 *)((char *)data + len - 64);
+    u64 result = len * PRIME64_1;
+    const u64 *last_stripe = (u64 *)((char *)data + len - 64);
 
-	_Alignas(32) u64 acc[8] = {
-		PRIME32_3, PRIME64_1, PRIME64_2, PRIME64_3,
-		PRIME64_4, PRIME32_2, PRIME64_5, PRIME32_1
-	};
+    _Alignas(32) u64 acc[8] = {
+        PRIME32_3, PRIME64_1, PRIME64_2, PRIME64_3,
+        PRIME64_4, PRIME32_2, PRIME64_5, PRIME32_1};
 
-	int i = 0;
-	while (len > HCL_BLOCK_SIZE) {
-		__hcl_round(acc, (u8 *)((char *)data + i * HCL_BLOCK_SIZE));
-		len -= HCL_BLOCK_SIZE;
-		i++;
-	}
+    int i = 0;
+    while (len > HCL_BLOCK_SIZE) {
+        __hcl_round(acc, (u8 *)((char *)data + i * HCL_BLOCK_SIZE));
+        len -= HCL_BLOCK_SIZE;
+        i++;
+    }
 
-	usize n_full_stripes = (len - 1)/64;
-	for (int n = 0; n < n_full_stripes; n++) {
-		u64 *stripe = (u64 *)((char *)data + i * HCL_BLOCK_SIZE + n * 64);
-		__hcl_accumulate(acc, stripe, n * 8);
-	}
+    usize n_full_stripes = (len - 1) / 64;
+    for (int n = 0; n < n_full_stripes; n++) {
+        u64 *stripe = (u64 *)((char *)data + i * HCL_BLOCK_SIZE + n * 64);
+        __hcl_accumulate(acc, stripe, n * 8);
+    }
 
-	__hcl_accumulate(acc, last_stripe, HCL_SECRET_LEN - 71);
+    __hcl_accumulate(acc, last_stripe, HCL_SECRET_LEN - 71);
 
-	u64 secret_words[8];
-	memcpy(secret_words, (char *)__hcl_secret + secret_offset, 64);
+    u64 secret_words[8];
+    memcpy(secret_words, (char *)__hcl_secret + secret_offset, 64);
 
-	for (i = 0; i < 4; i++) {
-		u128 mul_result = (u128)(acc[i*2] ^ secret_words[i*2]) *
-			(acc[i*2+1] ^ secret_words[i*2+1]);
+    for (i = 0; i < 4; i++) {
+        u128 mul_result = (u128)(acc[i * 2] ^ secret_words[i * 2]) *
+                          (acc[i * 2 + 1] ^ secret_words[i * 2 + 1]);
 
-		u64 higher = mul_result >> 64;
-		u64 lower = mul_result;
+        u64 higher = mul_result >> 64;
+        u64 lower = mul_result;
 
-		result += lower ^ higher;
-	}
+        result += lower ^ higher;
+    }
 
-	return __hcl_avalanche(result);
+    return __hcl_avalanche(result);
 }
 
 static inline u64 hcl_hash(void *in, size_t len) {
-	if (len == 0) return __hcl_hash_empty();
-	else if (len <= 3) return __hcl_hash_1to3(in, len);
-	else if (len <= 8) return __hcl_hash_4to8(in, len);
-	else if (len <= 16) return __hcl_hash_9to16(in, len);
-	else if (len <= 128) return __hcl_hash_17to128(in, len);
-	else if (len <= 240) return __hcl_hash_129to240(in, len);
-	else return __hcl_hash_large(in, len);
+    if (len == 0)
+        return __hcl_hash_empty();
+    else if (len <= 3)
+        return __hcl_hash_1to3(in, len);
+    else if (len <= 8)
+        return __hcl_hash_4to8(in, len);
+    else if (len <= 16)
+        return __hcl_hash_9to16(in, len);
+    else if (len <= 128)
+        return __hcl_hash_17to128(in, len);
+    else if (len <= 240)
+        return __hcl_hash_129to240(in, len);
+    else
+        return __hcl_hash_large(in, len);
 }
+
+#define hcl_define_hashmap_alias(K, V, name)                                         \
+    typedef struct {                                                                 \
+        K key;                                                                       \
+        V value;                                                                     \
+    } hcl_hmpair_##name;                                                             \
+                                                                                     \
+    typedef struct {                                                                 \
+        hcl_da_hash_##name *backing;                                                 \
+    } hcl__##name;                                                                   \
+                                                                                     \
+    hcl_hashmap_##name *hcl_hashmap_##name##_initc(hcl_arena *arena, size_t count) { \
+        hcl_hashmap_##name *hashmap = (hcl_hashmap_##name *)hcl_alloc_align(         \
+            arena,                                                                   \
+            sizeof(hcl_hashmap_##name),                                              \
+            alignof(hcl_hashmap_##name));                                            \
+                                                                                     \
+        da->backing = hcl_da_hash_##name_initc(arena, count * 8);                    \
+        da->len = 0;                                                                 \
+        da->cap = count;                                                             \
+        return hashmap;                                                              \
+    }
 
 #endif

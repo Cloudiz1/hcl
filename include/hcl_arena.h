@@ -46,7 +46,7 @@ static inline void hcl_arena_clear(hcl_arena *arena) {
 }
 
 static inline void hcl_arena_free(hcl_arena *arena) {
-	free(arena); 
+	munmap(arena, arena->capacity); 
 }
 
 #endif

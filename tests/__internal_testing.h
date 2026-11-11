@@ -7,7 +7,7 @@
 #define HCL_TESTING_RED "\033[31m"
 #define HCL_TESTING_CLEAR "\033[0m"
 
-#define hcl_test(name) fprintf(stderr, "module: %s\n", name)
+#define hcl_test(name) fprintf(stderr, "\nmodule: %s\n", name)
 #define __hcl_print_test(name) fprintf(stderr, "    %s: ", name)
 
 #define __hcl_pass() fprintf(stderr, HCL_TESTING_GREEN "passed\n" HCL_TESTING_CLEAR)

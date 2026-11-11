@@ -3,12 +3,12 @@ all: simd
 
 simd:
 	clear
+	echo "TESTS"
 	@mkdir -p build
 	@for f in $$(find $(dir) -name "*.c"); do \
 		out=build/$$(basename $$f .c); \
 		gcc $$f -g -march=native -I include/ -Wall -Werror -o $$out || exit 1; \
 		./$$out || exit 1; \
-		echo; \
 	done
 
 full:
@@ -18,7 +18,6 @@ full:
 		out=build/$$(basename $$f .c); \
 		gcc $$f -g -I include/ -Wall -Werror -o $$out || exit 1; \
 		./$$out || exit 1; \
-		echo; \
 	done
 
 dir = tests/
